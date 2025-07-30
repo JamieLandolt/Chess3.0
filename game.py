@@ -64,6 +64,7 @@ class Game:
         self.c = c
         # Maps squares to their pieces
         self.positions_to_pieces = {}
+        self.set_up_pieces()
         # The currently selected piece (Legal moves are shown)
         self.selected_piece = None
         # Whose turn it is
@@ -72,46 +73,37 @@ class Game:
         # TODO: Implement button to select player colours & this should be initially None
         self.player_colours = ["W"]
 
-    def generate_board(self):
-        self.board = [[' '] * 8 for _ in range(8)]
-
+    def set_up_pieces(self):
         # Black Pieces
-        self.board[0][0] = Rook("a8", colour="B")
-        self.board[0][1] = Knight("b8", colour="B")
-        self.board[0][2] = Bishop("c8", colour="B")
-        self.board[0][3] = Queen("d8", colour="B")
-        self.board[0][4] = King("e8", colour="B")
-        self.board[0][5] = Bishop("f8", colour="B")
-        self.board[0][6] = Knight("g8", colour="B")
-        self.board[0][7] = Rook("h8", colour="B")
+        self.positions_to_pieces["a8"] = Rook("a8", colour="B")
+        self.positions_to_pieces["b8"] = Knight("b8", colour="B")
+        self.positions_to_pieces["c8"] = Bishop("c8", colour="B")
+        self.positions_to_pieces["d8"] = Queen("d8", colour="B")
+        self.positions_to_pieces["e8"] = King("e8", colour="B")
+        self.positions_to_pieces["f8"] = Bishop("f8", colour="B")
+        self.positions_to_pieces["g8"] = Knight("g8", colour="B")
+        self.positions_to_pieces["h8"] = Rook("h8", colour="B")
 
         # White Pieces
-        self.board[7][0] = Rook("a1", colour="W")
-        self.board[7][1] = Knight("b1", colour="W")
-        self.board[7][2] = Bishop("c1", colour="W")
-        self.board[7][3] = Queen("d1", colour="W")
-        self.board[7][4] = King("e1", colour="W")
-        self.board[7][5] = Bishop("f1", colour="W")
-        self.board[7][6] = Knight("g1", colour="W")
-        self.board[7][7] = Rook("h1", colour="W")
+        self.positions_to_pieces["a1"] = Rook("a1", colour="W")
+        self.positions_to_pieces["b1"] = Knight("b1", colour="W")
+        self.positions_to_pieces["c1"] = Bishop("c1", colour="W")
+        self.positions_to_pieces["d1"] = Queen("d1", colour="W")
+        self.positions_to_pieces["e1"] = King("e1", colour="W")
+        self.positions_to_pieces["f1"] = Bishop("f1", colour="W")
+        self.positions_to_pieces["g1"] = Knight("g1", colour="W")
+        self.positions_to_pieces["h1"] = Rook("h1", colour="W")
 
         # Black Pawns
         alpha = 'abcdefgh'
         for i in range(8):
-            self.board[1][i] = Pawn(alpha[i] + "7", colour="B")
+            square = alpha[i] + "7"
+            self.positions_to_pieces[square] = Pawn(square, colour="B")
 
         # White Pawns
         for i in range(8):
-            self.board[6][i] = Pawn(alpha[i] + "2", colour="W")
-
-        # Generate piece to square and square to piece mappings
-        for i, row in enumerate(self.board):
-            for j, piece in enumerate(row):
-                if piece != ' ':
-                    square = self.c.b2c((i, j))
-                    self.positions_to_pieces[square] = piece
-
-        return self.board
+            square = alpha[i] + "2"
+            self.positions_to_pieces[square] = Pawn(square, colour="W")
 
     def move(self, piece, square):
         """Takes a piece and moves it to the new square"""
@@ -119,8 +111,6 @@ class Game:
         self.positions_to_pieces[piece] = None
         self.positions_to_pieces[square] = piece
         board_coords = piece.c2b()
-        self.board[board_coords[0]][board_coords[1]] = piece
-
 
 class HelperFunctions:
     def __init__(self, c: Controller):

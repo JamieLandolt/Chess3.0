@@ -82,12 +82,13 @@ def css(piece_css):
 
 
 def get_pieces(positions_to_pieces):
+    pieces = []
+    piece_css = []
     images = {"WR": "pieces/WRook.png", "BR": "pieces/BRook.png", "WN": "pieces/WKnight.png",
               "BN": "pieces/BKnight.png", "WB": "pieces/WBishop.png", "BB": "pieces/BBishop.png",
               "WQ": "pieces/WQueen.png", "BQ": "pieces/BQueen.png", "WK": "pieces/WKing.png", "BK": "pieces/BKing.png",
               "WP": "pieces/WPawn.png", "BP": "pieces/BPawn.png"}
-    pieces = []
-    piece_css = []
+
     for square, piece in positions_to_pieces.items():
         file, rank = c.c2b(square)
         pieces.append(Img(src=images[piece.colour + piece.get_letter()[1]], cls=f"piece{file}{rank}"))
@@ -130,6 +131,7 @@ def get_click_squares(highlighted_positions):
 def render_board():
     """Helper function to render the board - used by both routes"""
     pieces, piece_css = get_pieces(c.g.positions_to_pieces)
+    print(pieces)
     click_squares = get_click_squares(set(map(c.c2b, c.highlighted_squares)))
 
     return (
