@@ -81,28 +81,26 @@ def css(piece_css):
         """ + ''.join(piece_css))
 
 
-def get_pieces(board):
+def get_pieces(positions_to_pieces):
     images = {"WR": "pieces/WRook.png", "BR": "pieces/BRook.png", "WN": "pieces/WKnight.png",
               "BN": "pieces/BKnight.png", "WB": "pieces/WBishop.png", "BB": "pieces/BBishop.png",
               "WQ": "pieces/WQueen.png", "BQ": "pieces/BQueen.png", "WK": "pieces/WKing.png", "BK": "pieces/BKing.png",
               "WP": "pieces/WPawn.png", "BP": "pieces/BPawn.png"}
     pieces = []
     piece_css = []
-    for i, row in enumerate(board):
-        for j, piece in enumerate(row):
-            if piece == ' ':
-                continue
-            pieces.append(Img(src=images[piece.colour + piece.get_letter()[1]], cls=f"piece{i}{j}"))
-            col, row = piece.c2b()
-            piece_css.append(".piece" + str(i) + str(j) + """ {
-                grid-column: """ + str(row + 1) + """;
-                grid-row: """ + str(col + 1) + """;
-                justify-self: center;
-                align-self: center;
-                z-index: 10;
-                pointer-events: none; /* Let clicks pass through to squares below */
-            }
-            """)
+    for square, piece in positions_to_pieces.items():
+        file, rank = c.c2b(square)
+        pieces.append(Img(src=images[piece.colour + piece.get_letter()[1]], cls=f"piece{file}{rank}"))
+        col, row = piece.c2b()
+        piece_css.append(".piece" + str(file) + str(rank) + """ {
+            grid-column: """ + str(row + 1) + """;
+            grid-row: """ + str(col + 1) + """;
+            justify-self: center;
+            align-self: center;
+            z-index: 10;
+            pointer-events: none; /* Let clicks pass through to squares below */
+        }
+        """)
     return pieces, piece_css
 
 
@@ -129,13 +127,9 @@ def get_click_squares(highlighted_positions):
     return squares
 
 
-def render_board(board=None):
+def render_board():
     """Helper function to render the board - used by both routes"""
-    # Initially
-    if board is None:
-        board = c.g.generate_board()
-
-    pieces, piece_css = get_pieces(board)
+    pieces, piece_css = get_pieces(c.g.positions_to_pieces)
     click_squares = get_click_squares(set(map(c.c2b, c.highlighted_squares)))
 
     return (

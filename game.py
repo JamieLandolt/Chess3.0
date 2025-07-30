@@ -64,8 +64,6 @@ class Game:
         self.c = c
         # Maps squares to their pieces
         self.positions_to_pieces = {}
-        # Sets up the initial board with pieces
-        self.generate_board()
         # The currently selected piece (Legal moves are shown)
         self.selected_piece = None
         # Whose turn it is
@@ -149,8 +147,6 @@ class HelperFunctions:
 
     def get_pawn_legal_moves(self, piece):
         legals = set()
-        # TODO: Fix 2 moves on first go
-        # TODO: Ensure legal moves aren't counted if they are behind pieces
 
         # Account for W or B piece colour
         starting_rank = '2' if piece.colour == "W" else '7'
