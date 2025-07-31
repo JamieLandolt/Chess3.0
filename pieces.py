@@ -7,6 +7,11 @@ class Piece():
     def get_letter(self):
         return f"'{self.letter}'"
 
+    def __deepcopy__(self, memodict={}):
+        copy = self.__class__(self.coords, self.colour)
+        copy.letter = self.letter
+        return copy
+
     def c2b(self):
         """Converts a piece's chess coords (a1) to board coords (0, 0)"""
         coord = self.coords
@@ -76,6 +81,11 @@ class Pawn(Piece):
         self.letter = "P"
         self.can_be_en_passanted = False
 
+    def __deepcopy__(self, memo={}):
+        copy = super().__deepcopy__()
+        copy.can_be_en_passanted = self.can_be_en_passanted
+        return copy
+
 class Knight(Piece):
     def __init__(self, coords, colour):
         super().__init__(coords, colour)
@@ -92,6 +102,12 @@ class Rook(Piece):
         self.castling_rights = True
         self.letter = "R"
 
+    def __deepcopy__(self, memo={}):
+        copy = super().__deepcopy__()
+        copy.castling_rights = self.castling_rights
+        return copy
+
+
 class Queen(Piece):
     def __init__(self, coords, colour):
         super().__init__(coords, colour)
@@ -103,3 +119,8 @@ class King(Piece):
 
         self.castling_rights = True
         self.letter = "K"
+
+    def __deepcopy__(self, memodict={}):
+        copy = super().__deepcopy__()
+        copy.castling_rights = self.castling_rights
+        return copy

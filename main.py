@@ -1,5 +1,6 @@
 from fasthtml.common import *
 from game import Controller
+import time
 
 app, rt = fast_app(live=True)
 
