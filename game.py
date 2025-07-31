@@ -243,8 +243,8 @@ class HelperFunctions:
         return set(filter(lambda x: self.square_free(x, piece.colour), legals))
 
     def in_check(self, colour):
-        return self.c.g.white_king.coords in self.c.g.white_attacked_squares if colour == "W" else (
-                self.c.g.black_king.coords in self.c.g.black_attacked_squares
+        return self.c.g.white_king.coords in self.c.g.black_attacked_squares if colour == "W" else (
+                self.c.g.black_king.coords in self.c.g.white_attacked_squares
         )
 
     def get_attacked_squares(self):
@@ -253,9 +253,9 @@ class HelperFunctions:
         self.c.g.black_attacked_squares = set()
         for piece in self.c.g.positions_to_pieces.values():
             if piece.colour == "W":
-                self.c.g.white_attacked_squares.union(self.get_possible_moves(piece))
+                self.c.g.white_attacked_squares |= self.get_possible_moves(piece)
             else:
-                self.c.g.black_attacked_squares.union(self.get_possible_moves(piece))
+                self.c.g.black_attacked_squares |= self.get_possible_moves(piece)
 
     def get_pawn_possible_moves(self, piece):
         moves = set()
