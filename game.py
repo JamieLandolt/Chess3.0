@@ -29,15 +29,14 @@ class Controller:
     def select_piece(self, square):
         self.g.selected_piece = self.g.positions_to_pieces[square]
         legals = self.h.get_legal_moves(self.g.selected_piece)
-        print(f"{legals=}")
         self.highlighted_squares.extend(legals)
-        print(f"{self.highlighted_squares=}")
 
     def flip_turn(self):
         self.g.turn = "B" if self.g.turn == "W" else "W"
 
     def on_click(self, square):
         """When a square is clicked, this function is run with the parameter being the square clicked (e4)"""
+        # Select a piece if none selected and one was clicked
         if not self.g.selected_piece:
             if self.g.positions_to_pieces.get(square, None):
                 self.select_piece(square)
@@ -52,6 +51,11 @@ class Controller:
             self.g.move(self.g.selected_piece, square)
             self.deselect_piece()
             self.flip_turn()
+        # Select the clicked piece if it piece can't be taken by the currently selected piece
+        elif self.g.positions_to_pieces.get(square, None):
+            self.remove_highlighted_squares()
+            self.deselect_piece()
+            self.select_piece(square)
         else:
             # Deselect piece if invalid square
             self.remove_highlighted_squares()
@@ -119,6 +123,7 @@ class Game:
         # A reference to the Controller
         self.c = c
         # Maps squares to their pieces
+        self.pieces = {}
         self.positions_to_pieces = {}
         self.white_attacked_squares = {"a3", "b3", "c3", "d3", "e3", "f3", "g3", "h3"}
         self.black_attacked_squares = {"a6", "b6", "c6", "d6", "e6", "f6", "g6", "h6"}
@@ -168,22 +173,23 @@ class Game:
             square = alpha[i] + "2"
             self.positions_to_pieces[square] = Pawn(square, colour="W")
 
-    def move(self, piece, square):
-        """Takes a piece and moves it to the new square"""
-        # TODO: Promotion
-
-        en_passant_rank = {"W": "4", "B": "5"}
-        # If a piece could be en passant last move, remove its privileges
+    def remove_en_passant_privileges(self):
         if self.c.h.en_passantee:
             self.c.h.en_passantee.can_be_en_passanted = False
             self.c.h.en_passantee = None
 
-        # Check if pawn moved onto correct rank to be en passanted on next move
+    def provide_en_passant_privileges(self, piece, square):
+        en_passant_rank = {"W": "4", "B": "5"}
         if piece.letter == "P":
             if square[1] == en_passant_rank[piece.colour] and piece.coords[1] == "2" if piece.colour == "W" else "7":
                 piece.can_be_en_passanted = True
                 self.c.h.en_passantee = piece
 
+    def remove_castling_privileges(self, piece):
+        if piece.letter in ('R', 'K'):
+            piece.castling_rights = False
+
+    def shift_piece(self, piece, square):
         # Remove piece from square
         self.positions_to_pieces.pop(piece.coords)
         # Update piece coords
@@ -191,12 +197,41 @@ class Game:
         # Place piece on new square
         self.positions_to_pieces[square] = piece
 
+    def move(self, piece, square):
+        """Takes a piece and moves it to the new square"""
+        # TODO: Promotion
+
+        self.remove_castling_privileges(piece)
+
+        # If a piece could be en passanted last move, remove its privileges
+        self.remove_en_passant_privileges()
+
+        # Check if pawn moved onto correct rank to be en passanted on next move
+        self.provide_en_passant_privileges(piece, square)
+
+
+        # Check if they are castling so we can move the rook
+        if piece.letter == "K" and abs(ord(piece.coords[0]) - ord(square[0])) == 2:
+            match square[0]:
+                case 'c':
+                    rook = self.positions_to_pieces["a" + square[1]]
+                    self.shift_piece(rook, "d" + square[1])
+                case 'g':
+                    rook = self.positions_to_pieces["h" + square[1]]
+                    self.shift_piece(rook, "f" + square[1])
+
+        # Actually move the piece
+        self.shift_piece(piece, square)
+
+        # Remove piece from old square when en passanting
         for old_square, new_square in self.c.h.en_passant:
             if new_square == square:
                 self.positions_to_pieces.pop(old_square)
                 break
 
+        # Reset the list of en passants that can be played
         self.c.h.en_passant = []
+        # Update which squares are being attacked by both colours
         self.c.h.get_attacked_squares()
 
 class HelperFunctions:
@@ -420,7 +455,7 @@ class HelperFunctions:
 
     def get_king_possible_moves(self, piece):
         moves = set()
-        # TODO: Castling, Checks, Can't Move Onto Attacked Squares, Pins (Not this function tho)
+        # TODO: Castling
 
         up_1 = piece.get_square('*', 1)
         moves.add(up_1)
@@ -442,6 +477,46 @@ class HelperFunctions:
             moves.add(square)
             square = piece.get_square('-', 1, down_1)
             moves.add(square)
+
+        # Castling
+        if piece.castling_rights:
+            # rook_positions = {"WL": "a1", "WR": "h1", "BL": "a8", "BR": "h8"}
+            rook_positions = ["a1", "h1"] if piece.colour == "W" else ["a8", "h8"]
+
+            # To the left of the king 1, 2, 3 squares
+            l1 = piece.get_square('-', 1)
+            l2 = piece.get_square('-', 2)
+            l3 = piece.get_square('-', 3)
+
+            r1 = piece.get_square('+', 1)
+            r2 = piece.get_square('+', 2)
+
+            # Pieces on those squares
+            pl1 = self.c.g.positions_to_pieces.get(l1, None)
+            pl2 = self.c.g.positions_to_pieces.get(l2, None)
+            pl3 = self.c.g.positions_to_pieces.get(l3, None)
+
+            pr1 = self.c.g.positions_to_pieces.get(r1, None)
+            pr2 = self.c.g.positions_to_pieces.get(r2, None)
+
+            no_pieces_left = not (pl1 or pl2 or pl3)
+            no_pieces_right = not (pr1 or pr2)
+
+            attacked_squares = self.c.g.black_attacked_squares if piece.colour == "W" else self.c.g.white_attacked_squares
+            no_attacked_squares_left = all(map(lambda x: x not in attacked_squares, (l1, l2, l3)))
+            no_attacked_squares_right = all(map(lambda x: x not in attacked_squares, (r1, r2)))
+
+            # Locate each rook and check if it can castle
+            for position in rook_positions:
+                rook = self.c.g.positions_to_pieces.get(position, None)
+
+                if rook and rook.castling_rights:
+                    # Check for empty and not attacked spaces to the left and right of king
+                    no_pieces_blocking = no_pieces_left if position[0] == "a" else no_pieces_right
+                    no_attacked_squares = no_attacked_squares_left if position[0] == "a" else no_attacked_squares_right
+
+                    if no_pieces_blocking and no_attacked_squares and not self.in_check(piece.colour):
+                        moves.add(l2 if position[0] == "a" else r2)
 
         return self.filter_moves(piece, moves)
 
