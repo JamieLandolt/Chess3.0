@@ -131,7 +131,6 @@ def get_click_squares(highlighted_positions):
 def render_board():
     """Helper function to render the board - used by both routes"""
     pieces, piece_css = get_pieces(c.g.positions_to_pieces)
-    print(pieces)
     click_squares = get_click_squares(set(map(c.c2b, c.highlighted_squares)))
 
     return (

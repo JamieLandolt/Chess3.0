@@ -15,18 +15,25 @@ class Controller:
         alpha = 'abcdefgh'
         return alpha[coord[1]] + str(8 - coord[0])
 
-    def deselect_piece(self):
+    def remove_highlighted_squares(self):
         for square in self.h.get_legal_moves(self.g.selected_piece):
             self.highlighted_squares.remove(square)
+
+    def deselect_piece(self):
         self.g.selected_piece = None
 
     def select_piece(self, square):
         self.g.selected_piece = self.g.positions_to_pieces[square]
         self.highlighted_squares.extend(self.h.get_legal_moves(self.g.selected_piece))
 
+    def flip_turn(self):
+        self.g.turn = "B" if self.g.turn == "W" else "W"
+
     def on_click(self, square):
         """When a square is clicked, this function is run with the parameter being the square clicked (e4)"""
+        print("CHECKING WHETHER TO MOVE")
         if not self.g.selected_piece:
+            print("NO PIECE SELECTED")
             if self.g.positions_to_pieces.get(square, None):
                 self.select_piece(square)
             return
@@ -34,15 +41,22 @@ class Controller:
         # At this point we have selected a piece, then clicked a square to move it to that square
         # If same piece clicked deselect
         if square == self.g.selected_piece:
+            print("SAME PIECE CLICKED")
+            self.remove_highlighted_squares()
             self.deselect_piece()
             return
 
         # Check if piece can move to square
-        if square in self.h.get_legal_moves(self.g.selected_piece) and self.g.turn in self.g.player_colours:
+        if square in self.h.get_legal_moves(self.g.selected_piece) and self.g.turn == self.g.selected_piece.colour:
+            print("MOVING")
+            self.remove_highlighted_squares()
             self.g.move(self.g.selected_piece, square)
             self.deselect_piece()
+            self.flip_turn()
         else:
             # Deselect piece if invalid square
+            print(f"Piece: {self.g.selected_piece} cannot move to square: {square}")
+            self.remove_highlighted_squares()
             self.deselect_piece()
         return
 
@@ -107,10 +121,12 @@ class Game:
 
     def move(self, piece, square):
         """Takes a piece and moves it to the new square"""
+        # Remove piece from square
+        self.positions_to_pieces.pop(piece.coords)
+        # Update piece coords
         piece.coords = square
-        self.positions_to_pieces[piece] = None
+        # Place piece on new square
         self.positions_to_pieces[square] = piece
-        board_coords = piece.c2b()
 
 class HelperFunctions:
     def __init__(self, c: Controller):
@@ -120,11 +136,23 @@ class HelperFunctions:
         """Returns the piece on the given square, None if there is no piece"""
         return self.c.g.positions_to_pieces[square]
 
-    def square_free(self, square, colour):
-        """Returns True iff there is no piece on the square of the same colour given and the square is on the board"""
+    def square_free(self, square, colour, capture=None):
+        """Returns True iff there is no piece on the square of the same colour given and the square is on the board
+        Capture Parameter:
+        False -> captures are disabled |
+        True -> only captures are allowed |
+        None -> captures are allowed but not forced"""
         # .get is important i think smth to do with pieces off the board
+        if not square:
+            return False
         occupant = self.c.g.positions_to_pieces.get(square, ' ')
-        return (occupant == ' ' or occupant.colour != colour) and self.square_on_board(square)
+        if capture == True:
+            can_move = occupant != ' ' and occupant.colour != colour
+        elif capture == False:
+            can_move = occupant == ' '
+        else:
+            can_move = occupant == ' ' or occupant.colour != colour
+        return can_move and self.square_on_board(square)
 
     def square_on_board(self, square):
         """Returns True iff the square is on the board (between 'a1' to 'h8')"""
@@ -132,36 +160,79 @@ class HelperFunctions:
 
     def filter_moves(self, piece, legals):
         """Filters out empty squares ('') and those which have a piece on of the same colour (can't capture same colour)"""
-        return set(filter(lambda x: x and self.square_free(x, piece.colour), legals))
+        return set(filter(lambda x: self.square_free(x, piece.colour), legals))
 
 
     def get_pawn_legal_moves(self, piece):
         legals = set()
+        # TODO: Captures, En Passant
 
         # Account for W or B piece colour
         starting_rank = '2' if piece.colour == "W" else '7'
         op = "*" if piece.colour == "W" else '/'
 
         above_sq = piece.get_square(op, 1)
-        if self.square_free(above_sq, piece.colour):
+        if self.square_free(above_sq, piece.colour, capture=False):
             legals.add(above_sq)
 
             # On second rank (double move)
             if piece.coords[1] == starting_rank:
-                above_sq2 = piece.get_square(op, 2)
-                if self.square_free(above_sq2, piece.colour):
+                above_sq2 = piece.get_square(op, 2) # capture=False -> See self.square_free()
+                if self.square_free(above_sq2, piece.colour, capture=False):
                     legals.add(above_sq2)
+
+        # Capture left or right
+        ur_square = piece.get_square("+", 1, above_sq) # capture=True -> See self.square_free()
+        if self.square_free(ur_square, piece.colour, capture=True):
+            legals.add(ur_square)
+        ul_square = piece.get_square("-", 1, above_sq)
+        if self.square_free(ul_square, piece.colour, capture=True):
+            legals.add(ul_square)
+
+
 
         return legals
 
     def get_rook_legal_moves(self, piece):
         legals = set()
 
+        # Tracks which directions are blocked
+        dirs = {"U": 1, "R": 1, "D": 1, "L": 1}
+
         for i in range(1, 9):
-            legals.add(piece.get_square('*', i))
-            legals.add(piece.get_square('/', i))
-            legals.add(piece.get_square('+', i))
-            legals.add(piece.get_square('-', i))
+            # Check we haven't run into a piece beforehand
+            if dirs["U"]:
+                square = piece.get_square('*', i)
+                occupant = self.c.g.positions_to_pieces.get(square, None)
+                # If we run into a piece ensure we don't check further than it
+                if occupant:
+                    dirs["U"] = 0
+                legals.add(piece.get_square('*', i))
+
+            if dirs["D"]:
+                square = piece.get_square('/', i)
+                occupant = self.c.g.positions_to_pieces.get(square, None)
+                if occupant:
+                    dirs["D"] = 0
+                legals.add(square)
+
+            if dirs["R"]:
+                square = piece.get_square('+', i)
+                occupant = self.c.g.positions_to_pieces.get(square, None)
+                if occupant:
+                    dirs["R"] = 0
+                legals.add(square)
+
+            if dirs["L"]:
+                square = piece.get_square('-', i)
+                occupant = self.c.g.positions_to_pieces.get(square, None)
+                if occupant:
+                    dirs["L"] = 0
+                legals.add(square)
+
+            # All directions blocked -> Stop checking
+            if not any(dirs):
+                return legals
 
         return self.filter_moves(piece, legals)
 
@@ -198,7 +269,7 @@ class HelperFunctions:
 
             # Stop searching diagonals if all have hit a wall/piece
             if not any(diags.values()):
-                return set(filter(lambda x: x and self.square_free(x, piece.colour), legals))
+                return self.filter_moves(piece, legals)
 
             # if up_i avoids passing in '' as up_i for invalid square (when square not on board)
             if up_i:
@@ -237,6 +308,7 @@ class HelperFunctions:
 
     def get_king_legal_moves(self, piece):
         legals = set()
+        # TODO: Castles, Checks
 
         up_1 = piece.get_square('*', 1)
         legals.add(up_1)
