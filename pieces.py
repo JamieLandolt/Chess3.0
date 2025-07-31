@@ -74,6 +74,7 @@ class Pawn(Piece):
     def __init__(self, coords, colour):
         super().__init__(coords, colour)
         self.letter = "P"
+        self.can_be_en_passanted = False
 
 class Knight(Piece):
     def __init__(self, coords, colour):

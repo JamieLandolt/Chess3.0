@@ -78,6 +78,8 @@ class Game:
         self.c = c
         # Maps squares to their pieces
         self.positions_to_pieces = {}
+        self.white_attacked_squares = {"a3", "b3", "c3", "d3", "e3", "f3", "g3", "h3"}
+        self.black_attacked_squares = {"a6", "b6", "c6", "d6", "e6", "f6", "g6", "h6"}
         self.set_up_pieces()
         # The currently selected piece (Legal moves are shown)
         self.selected_piece = None
@@ -86,6 +88,9 @@ class Game:
         # This controls whether the game is running (Running iff not None)
         # TODO: Implement button to select player colours & this should be initially None
         self.player_colours = ["W"]
+
+        self.white_king = None
+        self.black_king = None
 
     def set_up_pieces(self):
         # Black Pieces
@@ -97,6 +102,7 @@ class Game:
         self.positions_to_pieces["f8"] = Bishop("f8", colour="B")
         self.positions_to_pieces["g8"] = Knight("g8", colour="B")
         self.positions_to_pieces["h8"] = Rook("h8", colour="B")
+        self.black_king = self.positions_to_pieces["e8"]
 
         # White Pieces
         self.positions_to_pieces["a1"] = Rook("a1", colour="W")
@@ -107,6 +113,7 @@ class Game:
         self.positions_to_pieces["f1"] = Bishop("f1", colour="W")
         self.positions_to_pieces["g1"] = Knight("g1", colour="W")
         self.positions_to_pieces["h1"] = Rook("h1", colour="W")
+        self.white_king = self.positions_to_pieces["e1"]
 
         # Black Pawns
         alpha = 'abcdefgh'
@@ -121,6 +128,19 @@ class Game:
 
     def move(self, piece, square):
         """Takes a piece and moves it to the new square"""
+        # TODO: Promotion
+
+        en_passant_rank = {"W": "4", "B": "5"}
+        # If a piece could en passant last move, remove its privileges
+        if self.c.h.en_passant_piece:
+            self.c.h.en_passant_piece.can_be_en_passanted = False
+            self.c.h.en_passant_piece = None
+        # Check if pawn can be en passanted
+        if piece.letter == "P":
+            if square[1] == en_passant_rank[piece.colour] and piece.coords[1] == "2" if piece.colour == "W" else "7":
+                piece.can_be_en_passanted = True
+                self.c.h.en_passant_piece = piece
+
         # Remove piece from square
         self.positions_to_pieces.pop(piece.coords)
         # Update piece coords
@@ -128,15 +148,26 @@ class Game:
         # Place piece on new square
         self.positions_to_pieces[square] = piece
 
+        for old_square, new_square in self.c.h.en_passant:
+            if new_square == square:
+                self.positions_to_pieces.pop(old_square)
+                break
+
+        self.c.h.en_passant = []
+        self.c.h.get_attacked_squares()
+
+
 class HelperFunctions:
     def __init__(self, c: Controller):
         self.c = c
+        self.en_passant = []
+        self.en_passant_piece = None
 
     def get_piece_on(self, square):
         """Returns the piece on the given square, None if there is no piece"""
         return self.c.g.positions_to_pieces[square]
 
-    def square_free(self, square, colour, capture=None):
+    def square_free(self, square, colour, capture=None, en_passant=False):
         """Returns True iff there is no piece on the square of the same colour given and the square is on the board
         Capture Parameter:
         False -> captures are disabled |
@@ -152,6 +183,10 @@ class HelperFunctions:
             can_move = occupant == ' '
         else:
             can_move = occupant == ' ' or occupant.colour != colour
+
+        if en_passant:
+            can_move = can_move and occupant != ' ' and occupant.letter == "P" and occupant.can_be_en_passanted
+
         return can_move and self.square_on_board(square)
 
     def square_on_board(self, square):
@@ -159,13 +194,27 @@ class HelperFunctions:
         return square[0] in 'abcdefgh' and square[1] in '12345678'
 
     def filter_moves(self, piece, legals):
-        """Filters out empty squares ('') and those which have a piece on of the same colour (can't capture same colour)"""
+        """Filters out empty squares ('') and those which have a piece on of the same colour (can't capture same
+        colour)"""
         return set(filter(lambda x: self.square_free(x, piece.colour), legals))
 
+    def in_check(self, colour):
+        return self.c.g.white_king.coords in self.c.g.white_attacked_squares if colour == "W" else (
+                self.c.g.black_king.coords in self.c.g.black_attacked_squares
+        )
+
+    def get_attacked_squares(self):
+        """Constructs a set of every square that is attacked, refreshes automatically upon each move"""
+        self.c.g.white_attacked_squares = set()
+        self.c.g.black_attacked_squares = set()
+        for piece in self.c.g.positions_to_pieces.values():
+            if piece.colour == "W":
+                self.c.g.white_attacked_squares.union(self.get_legal_moves(piece))
+            else:
+                self.c.g.black_attacked_squares.union(self.get_legal_moves(piece))
 
     def get_pawn_legal_moves(self, piece):
         legals = set()
-        # TODO: Captures, En Passant
 
         # Account for W or B piece colour
         starting_rank = '2' if piece.colour == "W" else '7'
@@ -182,14 +231,33 @@ class HelperFunctions:
                     legals.add(above_sq2)
 
         # Capture left or right
-        ur_square = piece.get_square("+", 1, above_sq) # capture=True -> See self.square_free()
-        if self.square_free(ur_square, piece.colour, capture=True):
-            legals.add(ur_square)
-        ul_square = piece.get_square("-", 1, above_sq)
-        if self.square_free(ul_square, piece.colour, capture=True):
-            legals.add(ul_square)
+        if above_sq:
+            ur_square = piece.get_square("+", 1, above_sq) # capture=True -> See self.square_free()
+            if self.square_free(ur_square, piece.colour, capture=True):
+                legals.add(ur_square)
+            ul_square = piece.get_square("-", 1, above_sq)
+            if self.square_free(ul_square, piece.colour, capture=True):
+                legals.add(ul_square)
 
+        # En Passant
+        en_passant_offset = {"B": "/", "W": "*"}
+        en_passant_rank = {"W": "5", "B": "4"}
+        r_square = piece.get_square("+", 1)
 
+        # Only check if it's on the correct rank
+        if piece.coords[1] == en_passant_rank[piece.colour]:
+            # If opposite coloured pawn that just moved is to the right
+            if self.square_free(r_square, piece.colour, capture=True, en_passant=True):
+                end_square = piece.get_square(en_passant_offset[piece.colour], 1,  r_square)
+                # Encode so self.c.g.move() knows it is en passant and which piece is taken
+                self.en_passant.append((r_square, end_square))
+                legals.add(end_square)
+
+            l_square = piece.get_square("-", 1)
+            if self.square_free(l_square, piece.colour, capture=True, en_passant=True):
+                end_square = piece.get_square(en_passant_offset[piece.colour], 1,  l_square)
+                self.en_passant.append((l_square, end_square))
+                legals.add(end_square)
 
         return legals
 
@@ -308,7 +376,7 @@ class HelperFunctions:
 
     def get_king_legal_moves(self, piece):
         legals = set()
-        # TODO: Castles, Checks
+        # TODO: Castling, Checks, Can't Move Onto Attacked Squares, Pins (Not this function tho)
 
         up_1 = piece.get_square('*', 1)
         legals.add(up_1)
