@@ -1,16 +1,23 @@
 from fasthtml.common import *
 from game import Controller
+import threading
 
 app, rt = fast_app(live=True)
 
 def css(piece_css):
     return Style("""
+        html, body {
+            height: 100%;
+            margin: 0;
+            padding: 0;
+            overflow-x: hidden; /* Prevents horizontal scroll */
+        }
         body {
             background-image: url('background_images/background.png');
             background-repeat: repeat-x;
             background-position-x: 300px;
             background-size: 150vh auto;
-            min-height: 100vh;
+
         }
         h1 {
             text-align: center;
@@ -25,8 +32,7 @@ def css(piece_css):
         .board-container {
             position: relative;
             width: 48%;
-            display: block;
-            margin: 20px auto;
+            margin: 20px 20px;
             aspect-ratio: 1;
         }
         .board-img {
@@ -68,17 +74,67 @@ def css(piece_css):
             background-color: rgba(0, 255, 0, 0.5);
         }
         /* Info display */
-        #clicked-info {
-            text-align: center;
-            color: white;
-            background-color: rgba(0, 0, 0, 0.7);
-            padding: 10px;
-            margin: 20px auto;
+        .main-container {
+            display: flex;
+            justify-content: center;
+        }
+        .right-side-container h2 {
+            color: #717b57;
+            width: fit-content;
             border-radius: 5px;
-            max-width: 400px;
+        }
+        .promotion-button {
+            background-color: #717b57;
+            border: solid 1px black;
+            border-radius: 5px;
+        }
+        .promotion-container {
+            border: solid 5px black;
+            border-radius: 5px;
+            background-color: black;
+            opacity: 90%;
+            display: flex;
+            justify-content: center;
+            flex-direction: column;
+        }
+        .board-container {
+            margin-top: 0px;
+        }
+        .moves-display {
+            margin-top: 20px;
+            border: solid 5px black;
+            border-radius: 5px;
+            background-color: black;
+            opacity: 90%;
+            color: #FFFFFF;
+            display: flex;
+            justify-content: center;
+        }
+        .turn-msg {
+            margin-top: 20px;
+            border: solid 5px black;
+            border-radius: 5px;
+            background-color: black;
+            opacity: 90%;
+            display: flex;
+            justify-content: center;
+        }
+        .turn-msg h2 {
+            margin: 0; /* Remove default margins */
+        }
+        .piece-msg {
+            margin-top: 20px;
+            border: solid 5px black;
+            border-radius: 5px;
+            background-color: black;
+            opacity: 90%;
+            display: flex;
+            justify-content: center;
+        }
+        .piece-msg h2 {
+            margin: 0; /* Remove default margins */
         }
         """ + ''.join(piece_css))
-
 
 def get_pieces(positions_to_pieces):
     pieces = []
@@ -155,25 +211,131 @@ def square_clicked(row: int, col: int):
 
     # Re-render the board with updated highlights
     css_style, board_html = render_board()
+    # Re-render text
+    moves_html = get_moves_html()
+    turn_html = get_turn_html()
+    piece_html = get_selected_piece_html(chess_notation)
 
     # Return both the updated CSS and the board HTML
-    return css_style, board_html
+    return css_style, board_html, moves_html, turn_html, piece_html
 
+def get_promotion_button_html():
+    return Div(
+        H2("Promotion Options"),
+        Button(
+            "Queen",
+            cls="promotion-button",
+            hx_post=f"/promotion/Queen",
+        ),
+        Button(
+            "Rook",
+            cls="promotion-button",
+            hx_post=f"/promotion/Rook",
+        ),
+        Button(
+            "Bishop",
+            cls="promotion-button",
+            hx_post=f"/promotion/Bishop",
+        ),
+        Button(
+            "Knight",
+            cls="promotion-button",
+            hx_post=f"/promotion/Knight",
+        ),
+        cls="promotion-container"
+    )
+
+def get_moves_html():
+    # num moves we can fit in the display
+    n = 20
+    # TODO: Implement previously played moves
+    # Might want to store the piece (if not pawn) that made the move too (in played_moves in c.move())
+    # for prev, new in c.g.played_moves.items()[-n:]:
+    #     pass
+
+    return Div(
+        H2("Played Moves"),
+        cls="moves-display",
+        id="moves-display",
+        hx_swap_oob="true",
+    )
+
+@app.post('/promotion/Queen')
+def promote_to_queen():
+    c.set_promotion("Q")
+    event.set()
+    return "Queen"
+
+@app.post('/promotion/Rook')
+def promote_to_rook():
+    c.set_promotion("R")
+    event.set()
+    return "Rook"
+
+@app.post('/promotion/Bishop')
+def promote_to_bishop():
+    c.set_promotion("B")
+    event.set()
+    return "Bishop"
+
+@app.post('/promotion/Knight')
+def promote_to_knight():
+    c.set_promotion("K")
+    event.set()
+    return "Knight"
+
+def get_turn_html():
+    colour = "White" if c.g.turn == "W" else "Black"
+    checkmate = "White Wins!" if c.g.turn == "BC" else "Black Wins!"
+    return Div(
+        # Checkmate msg here
+        H2(f"{colour} to move" if c.g.turn in ("W", "B") else checkmate),
+        cls="turn-msg",
+        id="turn-display",
+        hx_swap_oob="true",
+    )
+
+def get_selected_piece_html(coords=""):
+    pieces = {"K": "King", "Q": "Queen", "B": "Bishop", "N": "Knight", "R": "Rook", "P": "Pawn"}
+    piece = pieces[c.g.selected_piece.letter] if c.g.selected_piece else ""
+    return Div(
+        H2(f"{piece} ({coords})" if piece else "No Piece Selected"),
+        cls="piece-msg",
+        id="piece-display",
+        hx_swap_oob="true",
+    )
 
 @rt('/')
 def get():
     global c
-    c = Controller()
+    global event
+
+    # Could add a condition to not create event when two AIs play each other
+    event = threading.Event()
+    c = Controller(event)
 
     css_style, board_html = render_board()
+    button_html = get_promotion_button_html()
+    moves_html = get_moves_html()
+    turn_html = get_turn_html()
+    piece_html = get_selected_piece_html()
 
     return Titled("BigJam's Chess Engine",
                   css_style,
                   Div(
-                      board_html,
-                      cls="board-container",
-                      id="board-area"  # This is what gets replaced
-                  ),
+                      Div(
+                          board_html,
+                          cls="board-container",
+                          id="board-area"  # This is what gets replaced
+                      ),
+                      Div(
+                          button_html,
+                            turn_html,
+                            piece_html,
+                            moves_html,
+                          cls="right-side-container"
+                      ),
+                  cls="main-container"),
                   cls="title",
                   )
 

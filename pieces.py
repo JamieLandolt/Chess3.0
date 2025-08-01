@@ -97,9 +97,9 @@ class Bishop(Piece):
         self.letter = "B"
 
 class Rook(Piece):
-    def __init__(self, coords, colour):
+    def __init__(self, coords, colour, castling_rights=True):
         super().__init__(coords, colour)
-        self.castling_rights = True
+        self.castling_rights = castling_rights
         self.letter = "R"
 
     def __deepcopy__(self, memo={}):

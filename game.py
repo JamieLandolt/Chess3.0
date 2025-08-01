@@ -2,10 +2,13 @@ from pieces import *
 import copy
 
 class Controller:
-    def __init__(self):
+    def __init__(self, event):
         self.g = Game(self)
         self.h = HelperFunctions(self)
+        # I don't think self.event needs to be saved when the game state is saved for simulating moves
+        self.event = event
         self.highlighted_squares = []
+        self.simulating_check = False
 
     def c2b(self, coord):
         """Converts chess coords (a1) to board coords (0, 0)"""
@@ -36,6 +39,10 @@ class Controller:
 
     def on_click(self, square):
         """When a square is clicked, this function is run with the parameter being the square clicked (e4)"""
+        # Game Over
+        if len(self.g.turn) == 2:
+            return
+
         # Select a piece if none selected and one was clicked
         if not self.g.selected_piece:
             if self.g.positions_to_pieces.get(square, None):
@@ -68,12 +75,15 @@ class Controller:
             'white_attacked_squares': self.g.white_attacked_squares,
             'black_attacked_squares': self.g.black_attacked_squares,
             'selected_piece': self.g.selected_piece,
+            'promotion_piece': self.g.promotion_piece,
             'turn': self.g.turn,
             'white_king': self.g.white_king,
             'black_king': self.g.black_king,
             'highlighted_squares': self.highlighted_squares,
             'en_passant': self.h.en_passant,
-            'en_passantee': self.h.en_passantee
+            'en_passantee': self.h.en_passantee,
+            'promotion_letter': self.g.promotion_letter,
+            'played_moves': self.g.played_moves,
         })
 
     def restore_state(self, state):
@@ -92,8 +102,10 @@ class Controller:
         state = self.save_state()
 
         # PERFORM SIMULATION
+        self.simulating_check = True
         self.g.move(piece, square)
         check = self.h.in_check(piece.colour)
+        self.simulating_check = False
 
         # RESTORE SAVED STATE
         self.restore_state(state)
@@ -117,29 +129,49 @@ class Controller:
             case 3:
                 self.g.player_colours = []
 
+    def set_promotion(self, piece):
+        print(f"Setting promotion piece to {self.g.promotion_piece}")
+        self.g.promotion_letter = piece
+
 
 class Game:
     def __init__(self, c: Controller):
         # A reference to the Controller
         self.c = c
-        # Maps squares to their pieces
-        self.pieces = {}
-        self.positions_to_pieces = {}
-        self.white_attacked_squares = {"a3", "b3", "c3", "d3", "e3", "f3", "g3", "h3"}
-        self.black_attacked_squares = {"a6", "b6", "c6", "d6", "e6", "f6", "g6", "h6"}
+        self.initialise_state()
 
-        self.white_king = None
-        self.black_king = None
-        self.set_up_pieces()
-        # The currently selected piece (Legal moves are shown)
-        self.selected_piece = None
-        # Whose turn it is
-        self.turn = "W"
-        # This controls whether the game is running (Running iff not None)
         # TODO: Implement button to select player colours & this should be initially None
         self.player_colours = ["W"]
 
+    def initialise_state(self):
+        """Initialises the variables that are needed for a fresh wipe of the game state"""
+        # Maps squares to their pieces
+        self.positions_to_pieces = {}
+        self.played_moves = {}
+        self.white_attacked_squares = {"a3", "b3", "c3", "d3", "e3", "f3", "g3", "h3"}
+        self.black_attacked_squares = {"a6", "b6", "c6", "d6", "e6", "f6", "g6", "h6"}
+
+        # A reference to the white and black kings
+        self.white_king = None
+        self.black_king = None
+        # The currently selected piece (Legal moves are shown)
+        self.selected_piece = None
+        # This should be reset to None on promotion
+        # Queues up the next promotion to be to this piece
+        self.promotion_piece = None
+        # The letter of the piece to be promoted to
+        self.promotion_letter = None
+
+        self.set_up_pieces()
+
+        # This controls whether the game is running (Running iff len(self.turn) == 1)
+        # Whose turn it is
+        self.turn = "W"
+
     def set_up_pieces(self):
+        """Sets up the original piece mapping of positions to pieces.
+        Also stores a reference to each king"""
+
         # Black Pieces
         self.positions_to_pieces["a8"] = Rook("a8", colour="B")
         self.positions_to_pieces["b8"] = Knight("b8", colour="B")
@@ -197,9 +229,29 @@ class Game:
         # Place piece on new square
         self.positions_to_pieces[square] = piece
 
+    def promote(self, piece):
+        # Wait for a promotion piece to be selected
+        self.c.event.wait()
+
+        # Create the new piece
+        match self.promotion_letter:
+            case "Q":
+                promotee = Queen(piece.coords, piece.colour)
+            case "R":
+                # Rook obv can't castle after it is promoted to
+                promotee = Rook(piece.coords, piece.colour, castling_rights=False)
+            case "B":
+                promotee = Bishop(piece.coords, piece.colour)
+            case "N":
+                promotee = Knight(piece.coords, piece.colour)
+
+        # Replace the old piece
+        self.positions_to_pieces[piece.coords] = promotee
+        # Reset the promotion piece so it doesn't auto promote next time to the last selected piece
+        self.promotion_piece = None
+
     def move(self, piece, square):
         """Takes a piece and moves it to the new square"""
-        # TODO: Promotion
 
         self.remove_castling_privileges(piece)
 
@@ -208,7 +260,6 @@ class Game:
 
         # Check if pawn moved onto correct rank to be en passanted on next move
         self.provide_en_passant_privileges(piece, square)
-
 
         # Check if they are castling so we can move the rook
         if piece.letter == "K" and abs(ord(piece.coords[0]) - ord(square[0])) == 2:
@@ -220,8 +271,13 @@ class Game:
                     rook = self.positions_to_pieces["h" + square[1]]
                     self.shift_piece(rook, "f" + square[1])
 
-        # Actually move the piece
+        # Store the move and move the piece
+        self.played_moves[piece.coords] = square
         self.shift_piece(piece, square)
+
+        # Check if promoting, if you think for a sec this 1, 8 condition is fine
+        if piece.letter == "P" and piece.coords[1] in ("1", "8") and not self.c.simulating_check:
+            self.promote(piece)
 
         # Remove piece from old square when en passanting
         for old_square, new_square in self.c.h.en_passant:
@@ -252,10 +308,12 @@ class HelperFunctions:
         False -> captures are disabled |
         True -> only captures are allowed |
         None -> captures are allowed but not forced"""
-        # .get is important i think smth to do with pieces off the board
         if not square:
             return False
+
+        # .get is important i think smth to do with pieces off the board
         occupant = self.c.g.positions_to_pieces.get(square, ' ')
+
         if capture == True:
             can_move = occupant != ' ' and occupant.colour != colour
         elif capture == False:
@@ -455,7 +513,6 @@ class HelperFunctions:
 
     def get_king_possible_moves(self, piece):
         moves = set()
-        # TODO: Castling
 
         up_1 = piece.get_square('*', 1)
         moves.add(up_1)
@@ -508,9 +565,9 @@ class HelperFunctions:
 
             # Locate each rook and check if it can castle
             for position in rook_positions:
-                rook = self.c.g.positions_to_pieces.get(position, None)
+                potential_rook = self.c.g.positions_to_pieces.get(position, None)
 
-                if rook and rook.castling_rights:
+                if potential_rook and potential_rook.letter == "R" and potential_rook.castling_rights:
                     # Check for empty and not attacked spaces to the left and right of king
                     no_pieces_blocking = no_pieces_left if position[0] == "a" else no_pieces_right
                     no_attacked_squares = no_attacked_squares_left if position[0] == "a" else no_attacked_squares_right
