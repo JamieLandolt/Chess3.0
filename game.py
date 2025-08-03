@@ -1,6 +1,8 @@
 from pieces import *
 import copy
 
+FIFTY_MOVE_RULE_CAP = 99
+
 class Controller:
     def __init__(self, event):
         self.g = Game(self)
@@ -24,7 +26,7 @@ class Controller:
             if square in self.highlighted_squares:
                 self.highlighted_squares.remove(square)
             else:
-                print(f"Tried to but couldn't remove {square} from highlighted squares!")
+                raise Exception(f"Tried to but couldn't remove {square} from highlighted squares!")
 
     def deselect_piece(self):
         self.g.selected_piece = None
@@ -40,7 +42,7 @@ class Controller:
     def on_click(self, square):
         """When a square is clicked, this function is run with the parameter being the square clicked (e4)"""
         # Game Over
-        if len(self.g.turn) == 2:
+        if self.g.mate:
             return
 
         # Select a piece if none selected and one was clicked
@@ -84,6 +86,9 @@ class Controller:
             'en_passantee': self.h.en_passantee,
             'promotion_letter': self.g.promotion_letter,
             'played_moves': self.g.played_moves,
+            'mate': self.g.mate,
+            'fifty_move_counter': self.g.fifty_move_counter,
+            'position_hashes': self.g.position_hashes
         })
 
     def restore_state(self, state):
@@ -111,11 +116,18 @@ class Controller:
         self.restore_state(state)
         return check
 
-    def remove_moves_that_result_in_check(self, moves):
+    def remove_moves_that_result_in_check(self, moves, piece):
+        original_square = piece.coords
+        # Without resetting piece.coords to the original square
+        # The piece variable in this function references the pawn that was moved.
+        # Then when the state is restored, the reference is kept and it is still on the square
+        # That it was moved to
         legals = set()
         for move in moves:
-            if not self.in_check_after_move(self.g.selected_piece, move):
+            piece.coords = original_square
+            if not self.in_check_after_move(piece, move):
                 legals.add(move)
+            piece.coords = original_square
         return legals
 
     def set_player_colours(self, option):
@@ -130,7 +142,6 @@ class Controller:
                 self.g.player_colours = []
 
     def set_promotion(self, piece):
-        print(f"Setting promotion piece to {self.g.promotion_piece}")
         self.g.promotion_letter = piece
 
 
@@ -148,6 +159,7 @@ class Game:
         # Maps squares to their pieces
         self.positions_to_pieces = {}
         self.played_moves = {}
+        self.position_hashes = {}
         self.white_attacked_squares = {"a3", "b3", "c3", "d3", "e3", "f3", "g3", "h3"}
         self.black_attacked_squares = {"a6", "b6", "c6", "d6", "e6", "f6", "g6", "h6"}
 
@@ -162,11 +174,13 @@ class Game:
         # The letter of the piece to be promoted to
         self.promotion_letter = None
 
-        self.set_up_pieces()
-
-        # This controls whether the game is running (Running iff len(self.turn) == 1)
         # Whose turn it is
         self.turn = "W"
+        # Checkmate (W = White Wins, B) or draw (D)
+        self.mate = ""
+        self.fifty_move_counter = 0
+
+        self.set_up_pieces()
 
     def set_up_pieces(self):
         """Sets up the original piece mapping of positions to pieces.
@@ -205,6 +219,8 @@ class Game:
             square = alpha[i] + "2"
             self.positions_to_pieces[square] = Pawn(square, colour="W")
 
+        self.position_hashes[(self.turn, frozenset(self.positions_to_pieces.items()))] = 1
+
     def remove_en_passant_privileges(self):
         if self.c.h.en_passantee:
             self.c.h.en_passantee.can_be_en_passanted = False
@@ -222,12 +238,24 @@ class Game:
             piece.castling_rights = False
 
     def shift_piece(self, piece, square):
+        # If capturing reset
+        if self.positions_to_pieces.get(square, None):
+            self.fifty_move_counter = 0
+        self.fifty_move_counter += 1
+
         # Remove piece from square
         self.positions_to_pieces.pop(piece.coords)
         # Update piece coords
         piece.coords = square
         # Place piece on new square
         self.positions_to_pieces[square] = piece
+
+        if piece.letter == "K":
+            match piece.colour:
+                case "B":
+                    self.black_king = piece
+                case "W":
+                    self.white_king = piece
 
     def promote(self, piece):
         # Wait for a promotion piece to be selected
@@ -276,8 +304,11 @@ class Game:
         self.shift_piece(piece, square)
 
         # Check if promoting, if you think for a sec this 1, 8 condition is fine
-        if piece.letter == "P" and piece.coords[1] in ("1", "8") and not self.c.simulating_check:
-            self.promote(piece)
+        if piece.letter == "P":
+            # Reset 50 move rule
+            self.fifty_move_counter = 0
+            if piece.coords[1] in ("1", "8") and not self.c.simulating_check:
+                self.promote(piece)
 
         # Remove piece from old square when en passanting
         for old_square, new_square in self.c.h.en_passant:
@@ -289,6 +320,40 @@ class Game:
         self.c.h.en_passant = []
         # Update which squares are being attacked by both colours
         self.c.h.get_attacked_squares()
+
+        # Check for checkmate / stalemate
+        opp_king = self.white_king if piece.colour == "B" else self.black_king
+        attacked_squares = self.white_attacked_squares if piece.colour == "W" else self.black_attacked_squares
+
+        # This stops infinite recursion where legal moves needs legal moves to check legal moves
+        # TLDR Don't check for checkmate when we are checking if they are in check
+        if self.c.simulating_check:
+            return
+
+        # Stalemate + Checkmate below here
+        # 50 move rule
+        if self.fifty_move_counter > FIFTY_MOVE_RULE_CAP:
+            self.mate = "D"
+
+        # Store the position
+        pos_hash = ("W" if self.turn == "B" else "B", frozenset(self.positions_to_pieces.items()))
+        self.position_hashes[pos_hash] = self.position_hashes.get(pos_hash, 0) + 1
+
+        # 3 Fold Repetition
+        if self.position_hashes[pos_hash] > 2:
+            self.mate = "D"
+
+        # If a single iteration of this loops occurs it means there is a legal move for the opposite colour
+        # Thus, not checkmate or stalemate
+        for _ in self.c.h.get_all_legal_moves("W" if piece.colour == "B" else "B"):
+            return
+
+        # It must be either checkmate or stalemate at this point
+        checkmate = opp_king.coords in attacked_squares
+        if checkmate:
+            self.mate = piece.colour
+        else: # Stalemate
+            self.mate = "D"
 
 class HelperFunctions:
     def __init__(self, c: Controller):
@@ -349,6 +414,26 @@ class HelperFunctions:
                 self.c.g.white_attacked_squares |= self.get_possible_moves(piece)
             else:
                 self.c.g.black_attacked_squares |= self.get_possible_moves(piece)
+
+    def get_all_legal_moves(self, colour):
+        """A generator which produces all legal moves for the given colour"""
+        king = self.c.g.white_king if colour == "W" else self.c.g.black_king
+        for move in self.get_legal_moves(king):
+            yield king, move
+        for piece in list(self.c.g.positions_to_pieces.values()).copy():
+            if piece != king and piece.colour == colour:
+                for move in self.get_legal_moves(piece):
+                    yield piece, move
+
+    def get_all_possible_moves(self, colour):
+        """A generator which produces all possible (not necessarily legal, for that use get_all_legal_moves) moves for the given colour"""
+        king = self.c.g.white_king if colour == "W" else self.c.g.black_king
+        for move in self.get_possible_moves(king):
+            yield king, move
+        for piece in self.c.g.positions_to_pieces.values():
+            if piece != king and piece.colour == colour:
+                for move in self.get_possible_moves(piece):
+                    yield piece, move
 
     def get_pawn_possible_moves(self, piece):
         moves = set()
@@ -593,11 +678,4 @@ class HelperFunctions:
                 return self.get_king_possible_moves(piece)
 
     def get_legal_moves(self, piece):
-        return self.c.remove_moves_that_result_in_check(self.get_possible_moves(piece))
-
-
-def main():
-    c = Controller()
-
-if __name__ == "__main__":
-    main()
+        return self.c.remove_moves_that_result_in_check(self.get_possible_moves(piece), piece)

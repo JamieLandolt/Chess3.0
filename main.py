@@ -286,10 +286,11 @@ def promote_to_knight():
 
 def get_turn_html():
     colour = "White" if c.g.turn == "W" else "Black"
-    checkmate = "White Wins!" if c.g.turn == "BC" else "Black Wins!"
+    # Could be checkmate or stalemate
+    mate = "White Wins!" if c.g.mate == "W" else "Black Wins!" if c.g.mate == "B" else "Draw!"
     return Div(
         # Checkmate msg here
-        H2(f"{colour} to move" if c.g.turn in ("W", "B") else checkmate),
+        H2(f"{colour} to move" if not c.g.mate else mate),
         cls="turn-msg",
         id="turn-display",
         hx_swap_oob="true",
@@ -320,7 +321,7 @@ def get():
     turn_html = get_turn_html()
     piece_html = get_selected_piece_html()
 
-    return Titled("BigJam's Chess Engine",
+    return Titled("BigJam's Chess Corner",
                   css_style,
                   Div(
                       Div(
