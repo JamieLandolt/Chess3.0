@@ -62,42 +62,35 @@ class Engine:
                     case "B":
                         evaluation -= PIECE_VALUES[piece.letter]
         return evaluation
-    def eval_to_depth_n(self, state, depth=1):
-        pass
 
-    # def eval_to_depth_n(self, state, depth=1, alpha, beta, maximisingPlayer):
-    #     # Initial Call: alphabeta(origin, depth, −∞, +∞, TRUE)
-    #     if depth == 0 or self.c.is_checkmate():
-    #         return self.calculate_eval(self.c.g.positions_to_pieces)
-    #
-    #     evals = {}
-    #     positions = {}
-    #     snapshot = None
-    #     # snapshot points to a dict of the game state after playing the move
-    #     for piece, square in self.c.h.get_all_legal_moves(self.c.g.turn, snapshot):
-    #         evals[(piece, square)] = self.c.get_eval_of_pos(piece, square, self.calculate_eval)
-    #
-    #     if maximisingPlayer:
-    #         eval = float("-inf")
-    #
-    #         for piece, square in self.c.h.get_all_legal_moves(self.c.g.turn, snapshot):
-    #             eval = max(eval, self.eval_to_depth_n(child_node, depth-1, alpha, beta, False))
-    #             if eval >= beta:
-    #                 break
-    #             alpha = max(alpha, eval)
-    #         return eval
-    #     else:
-    #         eval = float("inf")
-    #
-    #         for piece, square in self.c.h.get_all_legal_moves(self.c.g.turn, snapshot):
-    #             eval = min(eval, self.eval_to_depth_n(child_node, depth-1, alpha, beta, True))
-    #             if eval >= alpha:
-    #                 break
-    #             beta = min(beta, eval)
-    #         return eval
+    def eval_to_depth_n(self, state, alpha, beta, maximisingPlayer, depth=1):
+        # Initial Call: alphabeta(origin, depth, −∞, +∞, TRUE)
+        if depth == 0 or self.c.is_checkmate():
+            return self.calculate_eval(self.c.g.positions_to_pieces)
 
+        evals = {}
+        positions = {}
+        snapshot = None
+        # snapshot points to a dict of the game state after playing the move
+        for piece, square in self.c.h.get_all_legal_moves(self.c.g.turn, snapshot):
+            evals[(piece, square)] = self.c.get_eval_of_pos(piece, square, self.calculate_eval)
 
+        if maximisingPlayer:
+            eval = float("-inf")
 
+            for piece, square in self.c.h.get_all_legal_moves(self.c.g.turn, snapshot):
+                eval = max(eval, self.eval_to_depth_n(child_node, depth-1, alpha, beta, False))
+                if eval >= beta:
+                    break
+                alpha = max(alpha, eval)
+            return eval
+        else:
+            eval = float("inf")
 
-    # def eval_to_depth_n(self, node, depth=1):
-    #     pass
+            for piece, square in self.c.h.get_all_legal_moves(self.c.g.turn, snapshot):
+                eval = min(eval, self.eval_to_depth_n(child_node, depth-1, alpha, beta, True))
+                if eval >= alpha:
+                    break
+                beta = min(beta, eval)
+            return eval
+
