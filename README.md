@@ -3,7 +3,7 @@ Third time creating chess, this time the UI actually looks a bit nicer and all r
 
 *E.g. Can't castle over a checked square. Can't move a pinned piece. En Passant...*
 
-<img width="1440" height="813" alt="Screenshot 2026-03-04 at 9 14 13 am" src="https://github.com/user-attachments/assets/434c0f1a-a301-417b-9755-628056b9280d" />
+<img width="1440" height="811" alt="Screenshot 2026-03-04 at 9 44 29 am" src="https://github.com/user-attachments/assets/4abcace8-911f-4856-8001-e38e469e89e7" />
 
 ## Tech Stack
 ### Python
