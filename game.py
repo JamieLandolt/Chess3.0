@@ -179,6 +179,7 @@ class Game:
         # Maps squares to their pieces
         self.positions_to_pieces = {}
         self.played_moves = {}
+        self.moves = []
         self.position_hashes = {}
         self.white_attacked_squares = {"a3", "b3", "c3", "d3", "e3", "f3", "g3", "h3"}
         self.black_attacked_squares = {"a6", "b6", "c6", "d6", "e6", "f6", "g6", "h6"}
@@ -321,6 +322,8 @@ class Game:
 
         # Store the move and move the piece
         self.played_moves[piece.coords] = square
+        if not self.c.simulating_check:
+            self.moves.append(f"\n{piece.coords} -> {square}")
         self.shift_piece(piece, square)
 
         # Check if promoting, if you think for a sec this 1, 8 condition is fine

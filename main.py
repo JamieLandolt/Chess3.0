@@ -109,7 +109,13 @@ def css(piece_css):
             opacity: 90%;
             color: #FFFFFF;
             display: flex;
+            text-align: center;
+            flex-direction: column;
             justify-content: center;
+            align-items: center;
+        }
+        .move {
+            color: #FFFFFF;
         }
         .turn-msg {
             margin-top: 20px;
@@ -226,7 +232,7 @@ def square_clicked(row: int, col: int):
     # Re-render the board with updated highlights
     css_style, board_html = render_board()
     # Re-render text
-    moves_html = get_moves_html()
+    moves_html = get_moves_html(c.g.moves)
     turn_html = get_turn_html()
     piece_html = get_selected_piece_html(chess_notation)
     eval_html = get_eval_html()
@@ -260,7 +266,7 @@ def get_promotion_button_html():
         cls="promotion-container"
     )
 
-def get_moves_html():
+def get_moves_html(moves):
     # num moves we can fit in the display
     n = 20
     # TODO: Implement previously played moves
@@ -270,6 +276,7 @@ def get_moves_html():
 
     return Div(
         H2("Played Moves"),
+        *map(lambda x: Div(H3(x), cls="move"), moves),
         cls="moves-display",
         id="moves-display",
         hx_swap_oob="true",
@@ -344,7 +351,7 @@ def get():
 
     css_style, board_html = render_board()
     button_html = get_promotion_button_html()
-    moves_html = get_moves_html()
+    moves_html = get_moves_html(c.g.moves)
     turn_html = get_turn_html()
     piece_html = get_selected_piece_html()
     eval_html = get_eval_html()
