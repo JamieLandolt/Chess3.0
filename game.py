@@ -100,7 +100,7 @@ class Controller:
             elif hasattr(self, key):
                 setattr(self, key, value)
 
-    def in_check_after_move(self, piece, square):
+    def in_check_after_move(self, piece, square, snapshot=None):
         """Simulates a single move and reverts the game state back to as if the move was never played.
         The move should not appear on the board."""
         # SAVE GAME STATE BEFORE SIMULATION
@@ -110,13 +110,30 @@ class Controller:
         self.simulating_check = True
         self.g.move(piece, square)
         check = self.h.in_check(piece.colour)
+        # Save the position in case the caller wants to see what position you evaluated
+        snapshot = state
         self.simulating_check = False
 
         # RESTORE SAVED STATE
         self.restore_state(state)
         return check
 
-    def remove_moves_that_result_in_check(self, moves, piece):
+    def get_eval_of_pos(self, piece, square, eval_func):
+        # SAVE GAME STATE BEFORE SIMULATION
+        state = self.save_state()
+
+        # PERFORM SIMULATION
+        self.g.move(piece, square)
+        evaluation = eval_func(self.g.positions_to_pieces)
+        # Might need to .copy() the pos2pieces if bugging
+        pos = self.g.positions_to_pieces
+
+        # RESTORE SAVED STATE
+        self.restore_state(state)
+
+        return evaluation, pos
+
+    def remove_moves_that_result_in_check(self, moves, piece, snapshot=None):
         original_square = piece.coords
         # Without resetting piece.coords to the original square
         # The piece variable in this function references the pawn that was moved.
@@ -125,7 +142,7 @@ class Controller:
         legals = set()
         for move in moves:
             piece.coords = original_square
-            if not self.in_check_after_move(piece, move):
+            if not self.in_check_after_move(piece, move, snapshot):
                 legals.add(move)
             piece.coords = original_square
         return legals
@@ -143,6 +160,9 @@ class Controller:
 
     def set_promotion(self, piece):
         self.g.promotion_letter = piece
+
+    def is_checkmate(self):
+        return self.g.mate in "WB"
 
 
 class Game:
@@ -415,14 +435,16 @@ class HelperFunctions:
             else:
                 self.c.g.black_attacked_squares |= self.get_possible_moves(piece)
 
-    def get_all_legal_moves(self, colour):
-        """A generator which produces all legal moves for the given colour"""
+    def get_all_legal_moves(self, colour, snapshot=None):
+        """A generator which produces all legal moves for the given colour.
+        The pos argument (if given) gets set to the last position the generator evaluated."""
+        # Checking king first saves time sometimes when checking for checkmate
         king = self.c.g.white_king if colour == "W" else self.c.g.black_king
-        for move in self.get_legal_moves(king):
+        for move in self.get_legal_moves(king, snapshot):
             yield king, move
         for piece in list(self.c.g.positions_to_pieces.values()).copy():
             if piece != king and piece.colour == colour:
-                for move in self.get_legal_moves(piece):
+                for move in self.get_legal_moves(piece, snapshot):
                     yield piece, move
 
     def get_all_possible_moves(self, colour):
@@ -677,5 +699,5 @@ class HelperFunctions:
             case "K":
                 return self.get_king_possible_moves(piece)
 
-    def get_legal_moves(self, piece):
-        return self.c.remove_moves_that_result_in_check(self.get_possible_moves(piece), piece)
+    def get_legal_moves(self, piece, snapshot=None):
+        return self.c.remove_moves_that_result_in_check(self.get_possible_moves(piece), piece, snapshot)

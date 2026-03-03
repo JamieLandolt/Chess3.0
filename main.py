@@ -1,5 +1,6 @@
 from fasthtml.common import *
 from game import Controller
+from engine import Engine
 import threading
 
 app, rt = fast_app(live=True)
@@ -134,6 +135,19 @@ def css(piece_css):
         .piece-msg h2 {
             margin: 0; /* Remove default margins */
         }
+        .eval-msg {
+            margin-top: 20px;
+            border: solid 5px black;
+            border-radius: 5px;
+            background-color: black;
+            opacity: 90%;
+            color: #FFFFFF;
+            display: flex;
+            justify-content: center;
+        }
+        .eval-msg h2 {
+            margin: 0; /* Remove default margins */
+        }
         """ + ''.join(piece_css))
 
 def get_pieces(positions_to_pieces):
@@ -215,9 +229,10 @@ def square_clicked(row: int, col: int):
     moves_html = get_moves_html()
     turn_html = get_turn_html()
     piece_html = get_selected_piece_html(chess_notation)
+    eval_html = get_eval_html()
 
     # Return both the updated CSS and the board HTML
-    return css_style, board_html, moves_html, turn_html, piece_html
+    return css_style, board_html, moves_html, turn_html, piece_html, eval_html
 
 def get_promotion_button_html():
     return Div(
@@ -306,22 +321,35 @@ def get_selected_piece_html(coords=""):
         hx_swap_oob="true",
     )
 
+def get_eval_html():
+    evaluation = round(engine.calculate_eval(), 2)
+    evaluation = str(evaluation) if evaluation <= 0 else "+" + str(evaluation)
+    return Div(
+        H2(f"Eval: {evaluation}"),
+        cls="eval-msg",
+        id="eval-display",
+        hx_swap_oob="true",
+    )
+
 @rt('/')
 def get():
     global c
     global event
+    global engine
 
     # Could add a condition to not create event when two AIs play each other
     event = threading.Event()
     c = Controller(event)
+    engine = Engine(c)
 
     css_style, board_html = render_board()
     button_html = get_promotion_button_html()
     moves_html = get_moves_html()
     turn_html = get_turn_html()
     piece_html = get_selected_piece_html()
+    eval_html = get_eval_html()
 
-    return Titled("BigJam's Chess Corner",
+    return Titled("Chess",
                   css_style,
                   Div(
                       Div(
@@ -333,12 +361,12 @@ def get():
                           button_html,
                             turn_html,
                             piece_html,
+                            eval_html,
                             moves_html,
                           cls="right-side-container"
                       ),
                   cls="main-container"),
                   cls="title",
                   )
-
 
 serve()
